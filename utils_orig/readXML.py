@@ -5,7 +5,7 @@ import numpy as np
 import sys
 from map_config import map_configs
 
-log_dir = 'C:\\Users\\haebin\\Desktop\\traffic\\RESCO\\logs\\'
+log_dir = 'C:\\Users\\James\\PycharmProjects\\MATraffic\\logs\\'
 env_base = '..'+os.sep+'environments'+os.sep
 names = [folder for folder in next(os.walk(log_dir))[1]]
 
@@ -13,15 +13,6 @@ metrics = ['timeLoss', 'duration', 'waitingTime']
 
 for metric in metrics:
     output_file = 'avg_{}.py'.format(metric)
-
-    with open(output_file, 'w') as out:
-        if metric == 'timeLoss':
-            out.write("{} = {{\n".format('delays'))
-        elif metric == 'duration':
-            out.write("{} = {{\n".format('durations'))
-        else:
-            out.write("{} = {{\n".format('waiting'))
-
     run_avg = dict()
 
     for name in names:
@@ -110,11 +101,10 @@ for metric in metrics:
 
         plt.title(run_name)
         plt.plot(avg_delays)
-        #plt.show()
+        plt.show()
 
 
     np.set_printoptions(threshold=sys.maxsize)
     with open(output_file, 'a') as out:
         for i, res in enumerate(alg_res):
             out.write("'{}': {},\n".format(alg_name[i], res.tolist()))
-        out.write("}\n")

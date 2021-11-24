@@ -10,10 +10,6 @@ names = [folder for folder in next(os.walk(log_dir))[1]]
 
 metric = 'queue'
 output_file = 'avg_{}.py'.format(metric)
-
-with open(output_file, 'w') as out:
-    out.write("{} = {{\n".format('queue'))
-
 run_avg = dict()
 
 for name in names:
@@ -74,11 +70,10 @@ for run_name in run_avg:
 
     plt.title(run_name)
     plt.plot(avg_delays)
-    #plt.show()
+    plt.show()
 
 
 np.set_printoptions(threshold=sys.maxsize)
 with open(output_file, 'a') as out:
     for i, res in enumerate(alg_res):
         out.write("'{}': {},\n".format(alg_name[i], res.tolist()))
-    out.write("}\n")
