@@ -76,11 +76,16 @@ chart = {
 
 for met_i, metric in enumerate(metrics):
     print('\n', metrics_str[met_i])
-    for map in map_title.keys():
+    fig, axes = plt.subplots(nrows = 4, ncols = 2, figsize = (12, 12))
+    fig.suptitle(metrics_str[met_i], fontsize=fs)
+
+    axes = axes.flatten()
+
+    for idx, map in enumerate(map_title.keys()):
         print()
         print(map_title[map])
         dqn_max = 0
-        plt.gca().set_prop_cycle(None)
+        #axes[idx].gca().set_prop_cycle(None)
         for key in metric:
             if map in key and '_yerr' not in key:
                 alg = key.split(' ')[0]
@@ -89,8 +94,8 @@ for met_i, metric in enumerate(metrics):
                 if alg == 'IDQN': dqn_max = np.max(metric[key])     # Set ylim to DQN max, it's approx. random perf.
 
                 if len(metric[key]) == 0:   # Fixed time isn't applicable to valid. scenario, skip color for consistency
-                    plt.plot([], [])
-                    plt.fill_between([], [], [])
+                    axes[idx].plot([], [])
+                    axes[idx].fill_between([], [], [])
                     continue
 
                 # Print out performance metric
@@ -121,8 +126,8 @@ for met_i, metric in enumerate(metrics):
 
                 # Build plots
                 if alg in statics:
-                    plt.plot([avg_tot]*num_episodes, '--', label=alg_name[alg])
-                    plt.fill_between([], [], [])      # Advance color cycle
+                    axes[idx].plot([avg_tot]*num_episodes, '--', label=alg_name[alg])
+                    axes[idx].fill_between([], [], [])      # Advance color cycle
                 elif not('FMA2C' in alg or 'IPPO' in alg):
                     windowed = []
                     queue = deque(maxlen=window_size)
@@ -147,30 +152,31 @@ for met_i, metric in enumerate(metrics):
                         low = windowed
                         high = windowed
 
-                    plt.plot(windowed, label=alg_name[alg])
-                    plt.fill_between(x, low, high, alpha=0.4)
+                    axes[idx].plot(windowed, label=alg_name[alg])
+                    axes[idx].fill_between(x, low, high, alpha=0.4)
                 else:
                     if alg == 'FMA2C':  # Skip pink in color cycle
-                        plt.plot([], [])
-                        plt.fill_between([], [], [])
+                        axes[idx].plot([], [])
+                        axes[idx].fill_between([], [], [])
                     alg = key.split(' ')[0]
                     x = [num_episodes-1, num_episodes]
                     y = [last_n]*2
-                    plt.plot(x, y, label=alg_name[alg])
-                    plt.fill_between([], [], [])  # Advance color cycle
+                    axes[idx].plot(x, y, label=alg_name[alg])
+                    axes[idx].fill_between([], [], [])  # Advance color cycle
 
         points = np.asarray([0, 20, 40, 60, 80, 100, num_episodes])
         labels = ('0', '20', '40', '60', '80', '100', '..1400')
-        plt.yticks(fontsize=fs)
-        plt.xticks(points, labels, fontsize=fs)
+        #axes[idx].yticks(fontsize=fs)
+        #axes[idx].xticks(points, labels, fontsize=fs)
         #plt.xlabel('Episode', fontsize=32)
         #plt.ylabel('Delay (s)', fontsize=32)
-        plt.title(map_title[map], fontsize=fs)
-        #plt.legend(prop={'size': 25})
-        bot, top = plt.ylim()
-        if bot < 0: bot = 0
-        plt.ylim(bot, dqn_max)
-        plt.show()
+        axes[idx].set_title(map_title[map], fontsize=fs)
+        axes[idx].legend(prop={'size': 5})
+        #bot, top = axes[idx].ylim()
+        #if bot < 0: bot = 0
+        #axes[idx].ylim(bot, dqn_max)
+    plt.subplots_adjust(hspace=0.5)
+    plt.show()
 
 for alg in chart:
     print(alg)
