@@ -31,7 +31,7 @@ def main():
 
     args = ap.parse_args()
 
-    if args.procs == 1 or args.libsumo:
+    if args.procs == 1: #or args.libsumo:
         run_trial(args, args.tr)
     else:
         pool = mp.Pool(processes=args.procs)

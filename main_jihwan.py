@@ -30,7 +30,7 @@ def main():
     ap.add_argument("--tr", type=int, default=0)  # Can't multi-thread with libsumo, provide a trial number
     args = ap.parse_args()
 
-    if args.procs == 1 or args.libsumo:
+    if args.procs == 1: #or args.libsumo:
         run_trial(args, args.tr)
     else:
         pool = mp.Pool(processes=args.procs)
@@ -95,7 +95,7 @@ def run_trial(args, trial):
     connection = [[1, 13], [0, 17], [14], [20], [17], [6, 19], [5, 8], [14, 19], [6, 11], [13], [], [8], [15], [0, 9], [2, 7, 16], [12, 16], [14, 15], [1, 4], [19], [5, 7, 18], [3]]
     for i in range(21):
         for j in connection[i]:
-            mask[i, j] = 1
+            mask[i, j] = 0.5
     for _ in range(args.eps):
         obs = env.reset()
         done = False

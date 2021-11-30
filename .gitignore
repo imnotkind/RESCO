@@ -129,4 +129,5 @@ dmypy.json
 .pyre/
 
 logs/
+logs_ji/
 environments/
