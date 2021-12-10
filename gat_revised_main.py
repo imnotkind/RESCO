@@ -1,0 +1,186 @@
+import pathlib
+import os
+import multiprocessing as mp
+import numpy as np
+from copy import deepcopy
+
+import torch
+import torch.nn as nn
+
+from multi_signal import MultiSignal
+import argparse
+from agent_config import agent_configs
+from map_config import map_configs
+from mdp_config import mdp_configs
+
+from GAT import GAT
+from grid_graph import dataset
+
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--agent", type=str, default='STOCHASTIC',
+                    choices=['STOCHASTIC', 'MAXWAVE', 'MAXPRESSURE', 'IDQN', 'IPPO', 'MPLight', 'MA2C', 'FMA2C',
+                             'MPLightFULL', 'FMA2CFull', 'FMA2CVAL'])
+    ap.add_argument("--trials", type=int, default=1)
+    ap.add_argument("--eps", type=int, default=1400)
+    ap.add_argument("--procs", type=int, default=1)
+    ap.add_argument("--map", type=str, default='grid4x4',
+                    choices=['grid4x4', 'arterial4x4', 'ingolstadt1', 'ingolstadt7', 'ingolstadt21',
+                             'cologne1', 'cologne3', 'cologne8'])
+    ap.add_argument("--pwd", type=str, default=str(pathlib.Path().absolute())+os.sep)
+    ap.add_argument("--log_dir", type=str, default=str(pathlib.Path().absolute())+os.sep+'logs'+os.sep)
+    ap.add_argument("--gui", type=bool, default=False)
+    ap.add_argument("--libsumo", type=bool, default=False)
+    ap.add_argument("--tr", type=int, default=0)  # Can't multi-thread with libsumo, provide a trial number
+    ap.add_argument("--alpha", type=float, default=1.0)  # alpha
+
+    args = ap.parse_args()
+
+    if args.procs == 1 or args.libsumo:
+        run_trial(args, args.tr)
+    else:
+        pool = mp.Pool(processes=args.procs)
+        for trial in range(1, args.trials+1):
+            pool.apply_async(run_trial, args=(args, trial))
+        pool.close()
+        pool.join()
+
+
+def run_trial(args, trial):
+    mdp_config = mdp_configs.get(args.agent)
+    if mdp_config is not None:
+        mdp_map_config = mdp_config.get(args.map)
+        if mdp_map_config is not None:
+            mdp_config = mdp_map_config
+        mdp_configs[args.agent] = mdp_config
+
+    agt_config = agent_configs[args.agent]
+    agt_map_config = agt_config.get(args.map)
+    if agt_map_config is not None:
+        agt_config = agt_map_config
+    alg = agt_config['agent']
+
+    if mdp_config is not None:
+        agt_config['mdp'] = mdp_config
+        management = agt_config['mdp'].get('management')
+        if management is not None:    # Save some time and precompute the reverse mapping
+            supervisors = dict()
+            for manager in management:
+                workers = management[manager]
+                for worker in workers:
+                    supervisors[worker] = manager
+            mdp_config['supervisors'] = supervisors
+
+    map_config = map_configs[args.map]
+    num_steps_eps = int((map_config['end_time'] - map_config['start_time']) / map_config['step_length'])
+    route = map_config['route']
+    if route is not None: route = args.pwd + route
+
+    env = MultiSignal(alg.__name__+'-tr'+str(trial),
+                      args.map,
+                      args.pwd + map_config['net'],
+                      agt_config['state'],
+                      agt_config['reward'],
+                      route=route, step_length=map_config['step_length'], yellow_length=map_config['yellow_length'],
+                      step_ratio=map_config['step_ratio'], end_time=map_config['end_time'],
+                      max_distance=agt_config['max_distance'], lights=map_config['lights'], gui=args.gui,
+                      log_dir=args.log_dir, libsumo=args.libsumo, warmup=map_config['warmup'])
+
+    agt_config['episodes'] = int(args.eps * 0.8)    # schedulers decay over 80% of steps
+    agt_config['steps'] = agt_config['episodes'] * num_steps_eps
+    agt_config['log_dir'] = args.log_dir + env.connection_name + os.sep
+    agt_config['num_lights'] = len(env.all_ts_ids)
+
+    # Get agent id's, observation shapes, and action sizes from env
+    obs_act = dict()
+    for key in env.obs_shape:
+        obs_act[key] = [env.obs_shape[key], len(env.phases[key]) if key in env.phases else None]
+    agent = alg(agt_config, obs_act, args.map, trial)
+
+    #mask = mask = np.zeros((21, 21))
+
+
+    reward_function = GAT()
+    optimizer = torch.optim.Adam(reward_function.parameters(), lr = 0.005, weight_decay=5e-4)
+    criterion = nn.MSELoss()
+
+    #map 정보를 통해 클러스터 형성하기
+    cluster = []
+    for k, v in mdp_configs['FMA2C'][args.map]['management'].items():
+        cluster.append(v)
+
+
+    # connection = [[1, 13], [0, 17], [14], [20], [17], [6, 19], [5, 8], [14, 19], [6, 11], [13], [], [8], [15], [0, 9], [2, 7, 16], [12, 16], [14, 15], [1, 4], [19], [5, 7, 18], [3]]
+    # for i in range(21):
+    #     for j in connection[i]:
+    #         mask[i, j] = 1
+    for _ in range(args.eps):
+        obs = env.reset()
+        done = False
+        while not done:
+            act = agent.act(obs)
+            obs, rew, done, info = env.step(act)
+            rew_list = []
+            new_rew_list = []
+            #그래프 정보 이용해서 neighboring reward 만들기#
+            new_reward = {}
+            reward = reward_function(dataset.x, dataset.edge_index)
+            for i, (k, v) in enumerate (rew.items()):
+                new_reward[k] = reward[i].detach()
+                new_rew_list.append(reward[i])
+                rew_list.append(rew[k])
+            new_rew_torch = torch.tensor(new_rew_list, dtype = torch.float, requires_grad=True)
+            rew_torch = torch.tensor(rew_list, dtype = torch.float, requires_grad=True)
+            # for cl in cluster:
+            #     summation = 0
+            #     for i in cl:
+            #         summation += rew[i] #먼저 클러스터 내의 리워드합 구해놓기
+            #     for i in cl:
+            #         new_reward[i] = rew[i] + args.alpha / len(cl) * (summation - rew[i])
+            
+            # print('######################################')
+            # print('old', rew)
+            # print('new', new_reward)
+            
+
+            # 기존에 사용했던 코드
+            # lights = deepcopy(rew)
+            # lights_list = []
+            # old_reward = []
+            # for k, v, in lights.items():
+            #     old_reward.append(v)
+            #     lights_list.append((k, v))
+
+            # new_reward = []
+            # for i in range(21):
+            #     if sum(mask[i]) == 0:
+            #         hop_reward = old_reward[i]
+            #     else:
+            #         hop_reward = old_reward[i] + sum(old_reward * mask[i]) / sum(mask[i])
+            #     new_reward.append(hop_reward)
+            
+
+            # for i in range(21):
+            #     rew[lights_list[i][0]] = new_reward[i]
+            #여기까지
+
+            #print(mask)
+            #print(values)
+            #print(rew)
+
+
+            loss = criterion(new_rew_torch, rew_torch)
+            print(loss)
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
+
+            #print('reward', rew)
+            agent.observe(obs, new_reward, done, info)
+    env.close()
+
+
+if __name__ == '__main__':
+    main()
