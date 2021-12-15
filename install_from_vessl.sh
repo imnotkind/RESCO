@@ -9,3 +9,4 @@ sudo apt-get update
 sudo apt-get --assume-yes install sumo sumo-tools sumo-doc
 export SUMO_HOME=/usr/share/sumo
 cd ~/RESCO/environments/grid4x4/ && unzip grid4x4.zip
+cd ~/RESCO/environments/arterial4x4/ && unzip arterial4x4.zip
