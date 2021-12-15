@@ -4,7 +4,7 @@ import numpy as np
 import sys
 from map_config import map_configs
 
-log_dir = 'C:\\Users\\haebin\\Desktop\\traffic\\RESCO\\logs\\'
+log_dir = '/home/vessl/RESCO/logs_bi/'
 env_base = '..'+os.sep+'environments'+os.sep
 names = [folder for folder in next(os.walk(log_dir))[1]]
 
